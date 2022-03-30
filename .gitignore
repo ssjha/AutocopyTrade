@@ -2,3 +2,6 @@
 *.log
 *.env
 config.json
+*.exe
+*.zip
+*.bkp
