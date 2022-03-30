@@ -1,0 +1,4 @@
+# Created by pytest automatically.
+*.log
+*.env
+config.json

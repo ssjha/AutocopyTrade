@@ -1,0 +1,36 @@
+{
+    "MASTER" : 
+	{
+        "userid"        : "ZERODHAID",
+        "password"      : "encrypted Kite password",
+        "APIKey"        : "kite api key",
+        "APISecret"     : "kite api secret",
+        "loginURL"      : "kite login url <https://kite.trade/connect/login?api_key=<apikey>",
+        "TOPTSecret"    : "encrypted secret of TOPT QR"
+    },
+    "CHILD" : 
+	{
+        "CHILDID1" : 
+		{
+			"userid"        : "CHILDID1",
+            "password"      : "encrypted Kite password",
+            "APIKey"        : "kite api key",
+            "APISecret"     : "kite api secret",
+            "loginURL"      : "kite login url <https://kite.trade/connect/login?api_key=<apikey>",
+            "multiplier"    : 1,
+			"enabled"       : "Y",
+            "TOPTSecret"    : "encrypted secret of TOPT QR"
+        },
+        "CHILDID2" : 
+		{
+			"userid"        : "CHILDID2-",
+            "password"      : "encrypted Kite password",
+            "APIKey"        : "kite api key",
+            "APISecret"     : "kite api secret",
+            "loginURL"      : "kite login url <https://kite.trade/connect/login?api_key=<apikey>",
+            "multiplier"    : 1,
+			"enabled"       : "Y",
+            "TOPTSecret"    : "encrypted secret of TOPT QR"
+        }   
+    }
+}
