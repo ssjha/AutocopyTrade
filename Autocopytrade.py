@@ -3,6 +3,7 @@ import os
 import traceback
 import logging
 import json
+from turtle import dot
 import dotenv
 import sys
 from urllib import parse
@@ -15,7 +16,7 @@ from cryptography.fernet import Fernet
 
 #set logger
 
-logging.basicConfig(filename='logcopytrade.log',format='%(asctime)s-%(process)d-%(levelname)s-%(message)s',level=logging.DEBUG)
+logging.basicConfig(filename='logcopytrade.log',format='%(asctime)s-%(process)d-%(levelname)s-%(message)s',level=logging.ERROR)
 
 logging.info("Program Copytrader started")
 
@@ -36,26 +37,33 @@ else:
     print('Environment file not found. Exiting')
     sys.exit()
 
+
+
 def getRequestToken(loginConfig):
     
     logging.info("Getting the request token for : {}".format(loginConfig['userid']))
     options = webdriver.ChromeOptions()
-    options.headless = True
+    options.add_argument('--ignore-certificate-error')
+    options.add_argument('--ignore-ssl-errors')
+    #options.headless = True
     driver = webdriver.Chrome('chromedriver',options=options)
     driver.delete_all_cookies()
 #    driver.delete_cookie('kite.zerodha.com')
     driver.implicitly_wait(2)
     driver.get(loginConfig['loginURL'])
-    driver.implicitly_wait(5)
+    driver.implicitly_wait(4)
     driver.find_element(by=By.ID,value='userid').send_keys(loginConfig['userid'])
     driver.find_element(by=By.ID,value='password').send_keys(deCryptPwd(loginConfig['password']))
     driver.find_element(by=By.XPATH,value='/html/body/div[1]/div/div[2]/div[1]/div/div/div[2]/form/div[4]/button').click()
-
+    time.sleep(3)
+    #driver.implicitly_wait(2)
     # Get and enter TOPT
     myToken = otp.get_totp(deCryptPwd(loginConfig['TOPTSecret']))
-    driver.find_element(by=By.ID,value='totp').send_keys(myToken)
-    driver.find_element(by=By.XPATH,value='/html/body/div[1]/div/div[2]/div[1]/div/div/div[2]/form/div[3]/button').click()
-    time.sleep(5)
+    #driver.find_element(by=By.ID,value='External TOTP').send_keys(myToken)
+    #driver.find_element(by=By.TAG_NAME,value='input').send_keys(myToken)
+    driver.find_element(by=By.XPATH,value='//input[@type="text"]').send_keys(myToken)
+    driver.find_element(by=By.XPATH,value='//button[@type="submit"]').click()
+    time.sleep(4)
     url=driver.current_url
     requestToken = parse.parse_qs(parse.urlparse(url).query)['request_token'][0]
     driver.quit()
@@ -109,18 +117,23 @@ def on_order_update(ws, data):
     
 def copyTrade(data):
     logging.debug('starting copy trade')
-    if data['status'] == 'CANCELLED':
-        cancelTargetOrders(data)
+    
+
+    if data['product'] not in prodFilter:
+        if data['status'] == 'CANCELLED':
+            cancelTargetOrders(data)
+        else:
+            logging.debug('copy trade open and update')
+            
+            #ignore UPDATE messages as it is resulting in out of sequence order updates
+            if (data['status'] == 'OPEN') or (data['status']=='TRIGGER PENDING'):
+                if (data['order_id'] in sourceOrders):
+                    updateTargetOrders(data)
+                else: 
+                    createTargetOrders(data)
+        showMarginsAvailable()
     else:
-        logging.debug('copy trade open and update')
-        
-        #ignore UPDATE messages as it is resulting in out of sequence order updates
-        if (data['status'] == 'OPEN') or (data['status']=='TRIGGER PENDING'):
-            if (data['order_id'] in sourceOrders):
-                updateTargetOrders(data)
-            else: 
-                createTargetOrders(data)
-    showMarginsAvailable()
+        logging.info('Product type {} ignored'.format(data['product']))
 
 # extract order parameters
 # Validate if there is a change in order
@@ -171,7 +184,8 @@ def createTargetOrder(orderdata, userid,targetAccnt,multiplier):
         print("Child order not created for parent order"+orderdata['order_id']+" for user id " + userid)
         
 def showMarginsAvailable():
-    print('-----------------Margins----------------------------')
+    print('---Margins--Available----------Used-----Cash Available-----------------------')
+    #print('-----------------Margins----------------------------')
     showMargin(kite=kitemaster,userid=masterconfig['userid'])
     for childacct in childaccts:
         accDetail = childaccts[childacct]
@@ -256,14 +270,19 @@ def cancelTargetOrder(orderdata,userid, targetAccnt):
     
 # Master account login
 masterconfig = config['MASTER']
+prodFilter = config['DONOTPROCESSPROD']
 
 logging.info('Logging into Master account')
 
 try:
     kitemaster= KiteConnect (api_key=masterconfig['APIKey'])
     requestToken = getRequestToken(masterconfig)
+    print ("Request token received:",requestToken)
+    time.sleep(2)
     data = kitemaster.generate_session(request_token=requestToken, api_secret=masterconfig['APISecret'])
-    kws = KiteTicker(masterconfig['APIKey'], data["access_token"])        
+    kws = KiteTicker(masterconfig['APIKey'], data["access_token"])       
+    print ('Kitemaster Connection successful')
+     
 except Exception as e:
     stacktrace=traceback.format_exc()
     logging.error("Connection Error {exception} - {stacktrace}".format(exception=e, stacktrace=stacktrace))
@@ -291,9 +310,11 @@ for childacct in config['CHILD']:
         child['multiplier'] = childconfig['multiplier']
         child['request_token'] =    getRequestToken(childconfig)
         try:
+            time.sleep(2)
             kite= KiteConnect (api_key=child['api_key'])
             data = kite.generate_session(request_token=child['request_token'], api_secret=child['api_secret'])
             kite.set_access_token(data["access_token"])
+            print("Kiteconnect session established")
         
         except Exception as e:
             stacktrace=traceback.format_exc()
@@ -306,5 +327,7 @@ for childacct in config['CHILD']:
         childaccts[child['userid']]=child
 
 showMarginsAvailable()
+#orderdet='{"account_id": "DR0900", "unfilled_quantity": 0, "checksum": "", "placed_by": "DR0900", "order_id": "220601400163639", "exchange_order_id": "1500000002188929", "parent_order_id": "", "status": "OPEN", "status_message": "", "status_message_raw": "", "order_timestamp": "2022-06-01 09:19:32", "exchange_update_timestamp": "2022-06-01 09:19:32", "exchange_timestamp": "2022-06-01 09:19:32", "variety": "regular", "exchange": "NFO", "tradingsymbol": "BANKNIFTY2260236800CE", "instrument_token": 12523778, "order_type": "LIMIT", "transaction_type": "BUY", "validity": "DAY", "product": "CNC", "quantity": 900, "disclosed_quantity": 0, "price": 4.7, "trigger_price": 0, "average_price": 0, "filled_quantity": 0, "pending_quantity": 900, "cancelled_quantity": 0, "market_protection": 0, "meta": {}, "tag": "", "guid": "01XLJGdTQEe05JN"}'
+#copyTrade(json.loads(orderdet))
 #Connect for subscribing to order updates in master account
 kws.connect()
